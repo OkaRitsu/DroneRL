@@ -4,11 +4,10 @@ import pickle
 import shutil
 
 import genesis as gs
-import torch
 from rsl_rl.runners import OnPolicyRunner
 
 from hover_env import HoverEnv
-from utils import get_device
+from utils import fix_seed, get_device
 
 
 def get_train_cfg(exp_name, max_iterations):
@@ -114,7 +113,10 @@ def main():
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=8192)
     parser.add_argument("--max_iterations", type=int, default=500)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
+
+    fix_seed(args.seed)
 
     gs.init(logging_level="warning")
 
