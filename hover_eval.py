@@ -59,7 +59,7 @@ def main():
                 obs, _, rews, dones, infos = env.step(actions)
                 env.cam.render()
             env.cam.stop_recording(
-                save_to_filename="logs/{args.exp_name}/video.mp4",
+                save_to_filename=f"logs/{args.exp_name}/video.mp4",
                 fps=env_cfg["max_visualize_FPS"],
             )
         else:
