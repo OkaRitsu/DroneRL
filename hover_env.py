@@ -1,6 +1,8 @@
 import math
 
 import genesis as gs
+import gymnasium as gym
+import numpy as np
 import torch
 from genesis.utils.geom import (
     inv_quat,
@@ -388,3 +390,94 @@ class HoverEnv:
         crash_rew = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
         crash_rew[self.crash_condition] = 1
         return crash_rew
+
+
+class HoverGymEnv(gym.Env):
+    """OpenAI Gymの環境を実装するためのクラス"""
+
+    def __init__(
+        self,
+        env_cfg,
+        obs_cfg,
+        reward_cfg,
+        command_cfg,
+        show_viewer=False,
+        device="cuda",
+    ):
+        super(HoverGymEnv, self).__init__()
+        self.device = device
+        # 内部環境はシングル環境として生成
+        self.hover_env = HoverEnv(
+            1,
+            env_cfg,
+            obs_cfg,
+            reward_cfg,
+            command_cfg,
+            show_viewer=show_viewer,
+            device=device,
+        )
+        self.env_cfg = env_cfg
+        self.num_actions = env_cfg["num_actions"]
+        self.clip_actions = env_cfg["clip_actions"]
+
+        # 観測は，以下の連結:
+        #  - 相対位置: 3次元（[-1,1]にclip）
+        #  - ドローンのクォータニオン: 4次元（通常[-1,1]）
+        #  - 線形速度: 3次元（[-1,1]にclip）
+        #  - 角速度: 3次元（[-1,1]にclip）
+        #  - 前回の行動: num_actions 次元（[-clip_actions, clip_actions]にclip）
+        obs_dim = 3 + 4 + 3 + 3 + self.num_actions
+        self.observation_space = gym.spaces.Box(
+            low=np.concatenate(
+                [
+                    -np.ones(3, dtype=np.float32),
+                    -np.ones(4, dtype=np.float32),
+                    -np.ones(3, dtype=np.float32),
+                    -np.ones(3, dtype=np.float32),
+                    -self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+                ]
+            ),
+            high=np.concatenate(
+                [
+                    np.ones(3, dtype=np.float32),
+                    np.ones(4, dtype=np.float32),
+                    np.ones(3, dtype=np.float32),
+                    np.ones(3, dtype=np.float32),
+                    self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+                ]
+            ),
+            dtype=np.float32,
+        )
+        self.action_space = gym.spaces.Box(
+            low=-self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+            high=self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+            dtype=np.float32,
+        )
+
+    def step(self, action):
+        action_tensor = torch.tensor(
+            action, device=self.hover_env.device, dtype=gs.tc_float
+        ).unsqueeze(0)
+        obs, _, reward, done, extras = self.hover_env.step(action_tensor)
+        # シングル環境なので0番目の要素を取り出す
+        obs = obs[0].cpu().numpy()
+        reward = reward[0].item()
+        done = bool(done[0].item())
+        truncated = False
+        info = {}
+        if "episode" in extras:
+            info.update(extras["episode"])
+        return obs, reward, done, truncated, info
+
+    def reset(self, seed=None):
+        obs, _ = self.hover_env.reset()
+        obs = obs[0].cpu().numpy()
+        info = {}
+        return obs, info
+
+    def render(self, mode="human"):
+        pass
+
+    def close(self):
+        if hasattr(self.hover_env.scene, "close"):
+            self.hover_env.scene.close()
