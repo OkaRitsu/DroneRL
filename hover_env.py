@@ -10,9 +10,11 @@ from genesis.utils.geom import (
 )
 
 
-def gs_rand_float(lower, upper, shape, device):
+def gs_rand_float(lower, upper, shape, device, std=0.1):
     # 指定された範囲でランダムな浮動小数点数を生成する関数
-    return (upper - lower) * torch.rand(size=shape, device=device) + lower
+    # return (upper - lower) * torch.rand(size=shape, device=device) + lower
+    rand_num = torch.randn(size=shape, device=device) * std
+    return torch.clamp(rand_num, lower, upper)
 
 
 class HoverEnv:
