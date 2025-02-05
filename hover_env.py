@@ -10,6 +10,7 @@ from genesis.utils.geom import (
     transform_by_quat,
     transform_quat_by_quat,
 )
+from stable_baselines3.common.vec_env import VecEnv
 
 
 def gs_rand_float(lower, upper, shape, device, std=0.1):
@@ -481,3 +482,155 @@ class HoverGymEnv(gym.Env):
     def close(self):
         if hasattr(self.hover_env.scene, "close"):
             self.hover_env.scene.close()
+
+
+class HoverVecEnv(VecEnv):
+    """
+    内部で HoverEnv を num_envs > 1 で生成し、並列シミュレーションを行う VecEnv です．
+
+    Stable-Baselines3 の VecEnv インターフェースに準拠するために、
+    step_async, step_wait のほか、env_is_wrapped, env_method, get_attr, set_attr
+    といった抽象メソッドを実装しています。
+    """
+
+    def __init__(
+        self,
+        num_envs,
+        env_cfg,
+        obs_cfg,
+        reward_cfg,
+        command_cfg,
+        show_viewer=False,
+        device="cuda",
+    ):
+        self.num_envs = num_envs
+        self.device = device
+
+        # 内部で並列シミュレーションを行う HoverEnv を生成
+        self.hover_env = HoverEnv(
+            num_envs,
+            env_cfg,
+            obs_cfg,
+            reward_cfg,
+            command_cfg,
+            show_viewer=show_viewer,
+            device=device,
+        )
+        self.env_cfg = env_cfg
+        self.num_actions = env_cfg["num_actions"]
+        self.clip_actions = env_cfg["clip_actions"]
+
+        # 観測次元（例）: 相対位置 (3) + クォータニオン (4) + 線形速度 (3) + 角速度 (3) + 前回の行動 (num_actions)
+        obs_dim = 3 + 4 + 3 + 3 + self.num_actions
+
+        observation_space = gym.spaces.Box(
+            low=np.concatenate(
+                [
+                    -np.ones(3, dtype=np.float32),
+                    -np.ones(4, dtype=np.float32),
+                    -np.ones(3, dtype=np.float32),
+                    -np.ones(3, dtype=np.float32),
+                    -self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+                ]
+            ),
+            high=np.concatenate(
+                [
+                    np.ones(3, dtype=np.float32),
+                    np.ones(4, dtype=np.float32),
+                    np.ones(3, dtype=np.float32),
+                    np.ones(3, dtype=np.float32),
+                    self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+                ]
+            ),
+            dtype=np.float32,
+        )
+        action_space = gym.spaces.Box(
+            low=-self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+            high=self.clip_actions * np.ones(self.num_actions, dtype=np.float32),
+            dtype=np.float32,
+        )
+        self.observation_space = observation_space
+        self.action_space = action_space
+
+        # VecEnv のコンストラクタには、num_envs, observation_space, action_space を渡す
+        super(HoverVecEnv, self).__init__(num_envs, observation_space, action_space)
+
+        # step_async で受け取った actions を一時保存する変数
+        self._actions = None
+
+    def reset(self, **kwargs):
+        """
+        すべての環境をリセットし、バッチ観測 (shape=(num_envs, obs_dim)) を返します。
+        """
+        obs, _ = self.hover_env.reset()
+        obs = obs.cpu().numpy()
+        return obs
+
+    def step_async(self, actions):
+        """
+        actions: np.ndarray, shape=(num_envs, num_actions)
+        一時的に actions を保存します。
+        """
+        self._actions = actions
+
+    def step_wait(self):
+        """
+        step_async で受け取った actions を使って 1 ステップ進め、
+        (obs, rewards, dones, infos) を返します。
+        """
+        # HoverEnv は torch.Tensor を入力として受け取るので変換します
+        actions_tensor = torch.tensor(
+            self._actions, device=self.hover_env.device, dtype=gs.tc_float
+        )
+        # ★ 修正箇所 ★
+        # HoverEnv.step の返り値は
+        #   (obs_buf, privileged, rew_buf, reset_buf, extras)
+        # となっているので、reward は 3 番目、done は 4 番目の要素です。
+        obs, _, rewards, dones, infos = self.hover_env.step(actions_tensor)
+        obs = obs.cpu().numpy()
+        rewards = rewards.cpu().numpy()
+        dones = dones.cpu().numpy().astype(bool)
+
+        # FIXME: algoでエラーが出るので、infos は空の辞書を返す
+        infos = [{} for _ in range(self.num_envs)]
+        return obs, rewards, dones, infos
+
+    def step(self, actions):
+        """
+        VecEnv インターフェースの step() は内部で step_async と step_wait を呼び出します。
+        """
+        self.step_async(actions)
+        return self.step_wait()
+
+    def close(self):
+        self.hover_env.close()
+
+    # --- 以下、VecEnv の抽象メソッドの実装 ---
+    def get_attr(self, attr_name, indices=None):
+        """
+        全環境に対して、hover_env の属性 attr_name の値を返します．
+        indices が指定された場合はその数に合わせたリストを返しますが、
+        ここでは hover_env は内部でバッチ処理しているため、すべて同じ値としています。
+        """
+        attr_val = getattr(self.hover_env, attr_name)
+        return [attr_val for _ in range(self.num_envs)]
+
+    def set_attr(self, attr_name, value, indices=None):
+        """
+        hover_env の属性 attr_name を value に設定します．
+        """
+        setattr(self.hover_env, attr_name, value)
+
+    def env_method(self, method_name, *method_args, indices=None, **method_kwargs):
+        """
+        hover_env の method_name を呼び出し、その返り値を各環境分のリストとして返します．
+        """
+        method = getattr(self.hover_env, method_name)
+        ret = method(*method_args, **method_kwargs)
+        return [ret for _ in range(self.num_envs)]
+
+    def env_is_wrapped(self, wrapper_class, indices=None):
+        """
+        この環境はラッパーでラップされていないので、False のリストを返します。
+        """
+        return [False for _ in range(self.num_envs)]

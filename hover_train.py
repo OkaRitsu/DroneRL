@@ -5,8 +5,9 @@ import shutil
 
 import genesis as gs
 from rsl_rl.runners import OnPolicyRunner
+from stable_baselines3 import PPO
 
-from hover_env import HoverEnv
+from hover_env import HoverEnv, HoverVecEnv
 from utils import fix_seed, get_device
 
 
@@ -129,7 +130,8 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
 
     device = get_device()
-    env = HoverEnv(
+
+    vec_env = HoverVecEnv(
         num_envs=args.num_envs,
         env_cfg=env_cfg,
         obs_cfg=obs_cfg,
@@ -138,17 +140,40 @@ def main():
         show_viewer=args.vis,
         device=device,
     )
-
-    runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
-
-    pickle.dump(
-        [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
-        open(f"{log_dir}/cfgs.pkl", "wb"),
+    model = PPO(
+        "MlpPolicy",
+        vec_env,
+        tensorboard_log="logs",
+        learning_rate=train_cfg["algorithm"]["learning_rate"],
+        max_grad_norm=train_cfg["algorithm"]["max_grad_norm"],
+        n_steps=train_cfg["runner"]["num_steps_per_env"],
+        batch_size=train_cfg["algorithm"]["num_mini_batches"],
+        n_epochs=train_cfg["algorithm"]["num_learning_epochs"],
+    )
+    model.learn(
+        total_timesteps=1e6,
+        progress_bar=True,
     )
 
-    runner.learn(
-        num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
-    )
+    # env = HoverEnv(
+    #     num_envs=args.num_envs,
+    #     env_cfg=env_cfg,
+    #     obs_cfg=obs_cfg,
+    #     reward_cfg=reward_cfg,
+    #     command_cfg=command_cfg,
+    #     show_viewer=args.vis,
+    #     device=device,
+    # )
+    # runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
+
+    # pickle.dump(
+    #     [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
+    #     open(f"{log_dir}/cfgs.pkl", "wb"),
+    # )
+
+    # runner.learn(
+    #     num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
+    # )
 
 
 if __name__ == "__main__":
