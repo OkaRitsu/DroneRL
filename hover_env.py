@@ -13,7 +13,7 @@ from genesis.utils.geom import (
 from stable_baselines3.common.vec_env import VecEnv
 
 
-def gs_rand_float(lower, upper, shape, device, std=0.1):
+def gs_rand_float(lower, upper, shape, device, std=0.5):
     # 指定された範囲でランダムな浮動小数点数を生成する関数
     # return (upper - lower) * torch.rand(size=shape, device=device) + lower
     rand_num = torch.randn(size=shape, device=device) * std
@@ -590,10 +590,21 @@ class HoverVecEnv(VecEnv):
         obs = obs.cpu().numpy()
         rewards = rewards.cpu().numpy()
         dones = dones.cpu().numpy().astype(bool)
+        infos = self._get_infos(rewards)
 
-        # FIXME: algoでエラーが出るので、infos は空の辞書を返す
-        infos = [{} for _ in range(self.num_envs)]
         return obs, rewards, dones, infos
+
+    def _get_infos(self, rewards):
+        infos = [
+            {
+                "episode": {
+                    "r": rewards[i],
+                    "l": self.hover_env.episode_length_buf[i].item(),
+                },
+            }
+            for i in range(self.num_envs)
+        ]
+        return infos
 
     def step(self, actions):
         """

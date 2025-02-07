@@ -3,10 +3,12 @@ import os
 import pickle
 
 import genesis as gs
+import gymnasium as gym
 import torch
 from rsl_rl.runners import OnPolicyRunner
+from stable_baselines3 import PPO
 
-from hover_env import HoverEnv
+from hover_env import HoverEnv, HoverGymEnv
 from utils import get_device
 
 
@@ -19,9 +21,9 @@ def main():
 
     gs.init()
 
-    log_dir = f"logs/{args.exp_name}"
+    log_dir = f"logs/sb3/{args.exp_name}"
     env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(
-        open(f"logs/{args.exp_name}/cfgs.pkl", "rb")
+        open(f"{log_dir}/cfgs.pkl", "rb")
     )
     reward_cfg["reward_scales"] = {}
 
@@ -33,8 +35,16 @@ def main():
     env_cfg["max_visualize_FPS"] = 60
 
     device = get_device()
-    env = HoverEnv(
-        num_envs=1,
+    # env = HoverEnv(
+    #     num_envs=1,
+    #     env_cfg=env_cfg,
+    #     obs_cfg=obs_cfg,
+    #     reward_cfg=reward_cfg,
+    #     command_cfg=command_cfg,
+    #     show_viewer=False,
+    #     device=device,
+    # )
+    env = HoverGymEnv(
         env_cfg=env_cfg,
         obs_cfg=obs_cfg,
         reward_cfg=reward_cfg,
@@ -43,28 +53,30 @@ def main():
         device=device,
     )
 
-    runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
-    resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
-    runner.load(resume_path)
-    policy = runner.get_inference_policy(device=device)
-
+    # runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
+    # resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
+    # runner.load(resume_path)
+    # policy = runner.get_inference_policy(device=device)
+    model = PPO.load(f"{log_dir}/model", env=env)
     obs, _ = env.reset()
 
     max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
     with torch.no_grad():
         if args.record:
-            env.cam.start_recording()
+            env.hover_env.cam.start_recording()
             for _ in range(max_sim_step):
-                actions = policy(obs)
+                # actions = policy(obs)
+                actions, _ = model.predict(obs, deterministic=True)
                 obs, _, rews, dones, infos = env.step(actions)
-                env.cam.render()
-            env.cam.stop_recording(
+                env.hover_env.cam.render()
+            env.hover_env.cam.stop_recording(
                 save_to_filename=f"logs/{args.exp_name}/video.mp4",
                 fps=env_cfg["max_visualize_FPS"],
             )
         else:
             for _ in range(max_sim_step):
-                actions = policy(obs)
+                # actions = policy(obs)
+                actions, _ = model.predict(obs, deterministic=True)
                 obs, _, rews, dones, infos = env.step(actions)
 
 

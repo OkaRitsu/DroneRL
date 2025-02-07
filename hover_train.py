@@ -6,6 +6,7 @@ import shutil
 import genesis as gs
 from rsl_rl.runners import OnPolicyRunner
 from stable_baselines3 import PPO
+from stable_baselines3.common.monitor import Monitor
 
 from hover_env import HoverEnv, HoverVecEnv
 from utils import fix_seed, get_device
@@ -121,7 +122,7 @@ def main():
 
     gs.init(logging_level="warning")
 
-    log_dir = f"logs/{args.exp_name}"
+    log_dir = f"logs/sb3/{args.exp_name}"
     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
     train_cfg = get_train_cfg(args.exp_name, args.max_iterations)
 
@@ -143,7 +144,9 @@ def main():
     model = PPO(
         "MlpPolicy",
         vec_env,
-        tensorboard_log="logs",
+        tensorboard_log=f"{log_dir}/tb",
+        verbose=1,
+        device=device,
         learning_rate=train_cfg["algorithm"]["learning_rate"],
         max_grad_norm=train_cfg["algorithm"]["max_grad_norm"],
         n_steps=train_cfg["runner"]["num_steps_per_env"],
@@ -151,9 +154,10 @@ def main():
         n_epochs=train_cfg["algorithm"]["num_learning_epochs"],
     )
     model.learn(
-        total_timesteps=1e6,
+        total_timesteps=1e5,
         progress_bar=True,
     )
+    model.save(f"{log_dir}/model")
 
     # env = HoverEnv(
     #     num_envs=args.num_envs,
@@ -166,10 +170,10 @@ def main():
     # )
     # runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
 
-    # pickle.dump(
-    #     [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
-    #     open(f"{log_dir}/cfgs.pkl", "wb"),
-    # )
+    pickle.dump(
+        [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
+        open(f"{log_dir}/cfgs.pkl", "wb"),
+    )
 
     # runner.learn(
     #     num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
