@@ -56,7 +56,7 @@ def main():
             env.cam.start_recording()
             for _ in range(max_sim_step):
                 actions = policy(obs)
-                obs, _, rews, dones, infos = env.step(actions)
+                obs, rews, dones, infos = env.step(actions)
                 env.cam.render()
             env.cam.stop_recording(
                 save_to_filename=f"logs/{args.exp_name}/video.mp4",
@@ -65,7 +65,7 @@ def main():
         else:
             for _ in range(max_sim_step):
                 actions = policy(obs)
-                obs, _, rews, dones, infos = env.step(actions)
+                obs, rews, dones, infos = env.step(actions)
 
 
 if __name__ == "__main__":

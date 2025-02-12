@@ -25,9 +25,13 @@ def get_train_cfg(exp_name, max_iterations):
             "schedule": "adaptive",
             "use_clipped_value_loss": True,
             "value_loss_coef": 1.0,
+            "rnd_cfg": None,
+            "symmetry_cfg": None,
+            "class_name": "PPO",
         },
         "init_member_classes": {},
         "policy": {
+            "class_name": "ActorCritic",
             "activation": "tanh",
             "actor_hidden_dims": [128, 128],
             "critic_hidden_dims": [128, 128],
@@ -40,17 +44,18 @@ def get_train_cfg(exp_name, max_iterations):
             "load_run": -1,
             "log_interval": 1,
             "max_iterations": max_iterations,
-            "num_steps_per_env": 24,
             "policy_class_name": "ActorCritic",
             "record_interval": -1,
             "resume": False,
             "resume_path": None,
             "run_name": "",
             "runner_class_name": "runner_class_name",
-            "save_interval": 1000,
         },
         "runner_class_name": "OnPolicyRunner",
         "seed": 1,
+        "num_steps_per_env": 24,
+        "save_interval": 1000,
+        "empirical_normalization": False,
     }
 
     return train_cfg_dict
@@ -127,6 +132,10 @@ def main():
     if os.path.exists(log_dir):
         shutil.rmtree(log_dir)
     os.makedirs(log_dir, exist_ok=True)
+    pickle.dump(
+        [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
+        open(f"{log_dir}/cfgs.pkl", "wb"),
+    )
 
     device = get_device()
     env = HoverEnv(
@@ -140,12 +149,6 @@ def main():
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
-
-    pickle.dump(
-        [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg],
-        open(f"{log_dir}/cfgs.pkl", "wb"),
-    )
-
     runner.learn(
         num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
     )

@@ -174,7 +174,9 @@ class HoverEnv:
         )  # 角速度
         self.last_base_pos = torch.zeros_like(self.base_pos)  # 前回の位置
 
-        self.extras = dict()  # ログ用の追加情報
+        self.extras = dict(
+            observations=dict(),
+        )  # ログ用の追加情報
 
     def _resample_commands(self, envs_idx):
         # 指定された環境インデックスに対して新しいコマンド（目標位置）を再サンプリングする
@@ -310,11 +312,14 @@ class HoverEnv:
         # 行動を記録
         self.last_actions[:] = self.actions[:]
 
-        return self.obs_buf, None, self.rew_buf, self.reset_buf, self.extras
+        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
 
     def get_observations(self):
         # 現在の観測値を取得
-        return self.obs_buf
+        extras = dict(
+            observations=dict(),
+        )
+        return self.obs_buf, extras
 
     def get_privileged_observations(self):
         # 特権的観測値を取得（現在はNone）

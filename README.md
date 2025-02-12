@@ -2,7 +2,16 @@
 This repo based on: https://github.com/Genesis-Embodied-AI/Genesis/tree/main/examples/drone
 ## Setup
 https://note.com/npaka/n/n07b448c74613
-https://note.com/npaka/n/n086f5e017394?sub_rt=share_pw
+https://note.com/npaka/n/n086f5e017394?sub_rt=share_pw 
+```
+conda create --name hover python=3.10 -y
+conda activate hover
+conda install pytorch torchvision torchaudio -c pytorch
+
+pip install genesis-world==0.2.1
+pip install rsl-rl-lib==2.2.0
+pip install gymnasium==1.0.0
+```
 ## Run Examples
 Check simulator
 ```
