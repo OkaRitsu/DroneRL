@@ -7,9 +7,29 @@ import genesis as gs
 from rsl_rl.runners import OnPolicyRunner
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
+from torch import nn
 
 from hover_env import HoverEnv, HoverVecEnv
 from utils import fix_seed, get_device
+
+
+def linear_schedule(initial_value):
+    """学習率を線形に減衰させるスケジューラ"""
+
+    def func(progress_remaining):
+        return progress_remaining * initial_value
+
+    return func
+
+
+class ExponentialScheduler:
+    def __init__(self, init_lr=1e-2, lam=0.99):
+        self.lr = init_lr
+        self.lam = lam
+
+    def __call__(self, progress_remaining):
+        self.lr *= self.lam
+        return self.lr
 
 
 def get_train_cfg(exp_name, max_iterations):
@@ -141,21 +161,56 @@ def main():
         show_viewer=args.vis,
         device=device,
     )
+    # total_timesteps は、1更新あたりのステップ数（n_steps）× 更新回数 × 環境数
+    total_timesteps = (
+        args.max_iterations * train_cfg["runner"]["num_steps_per_env"] * args.num_envs
+    )
+
+    # PPO のミニバッチサイズは (n_steps * num_envs) // num_mini_batches として計算
+    batch_size = (
+        train_cfg["runner"]["num_steps_per_env"]
+        * args.num_envs
+        // train_cfg["algorithm"]["num_mini_batches"]
+    )
+
+    # policy のネットワークアーキテクチャ設定
+    policy_kwargs = dict(
+        net_arch=dict(
+            pi=train_cfg["policy"]["actor_hidden_dims"],
+            vf=train_cfg["policy"]["critic_hidden_dims"],
+        ),
+        activation_fn=nn.Tanh,  # デフォルトが Tanh ですが、明示的に指定
+    )
+    # PPO モデルの作成
     model = PPO(
         "MlpPolicy",
         vec_env,
-        tensorboard_log=f"{log_dir}/tb",
+        tensorboard_log="logs/tb",
         verbose=1,
         device=device,
+        gamma=train_cfg["algorithm"]["gamma"],
         learning_rate=train_cfg["algorithm"]["learning_rate"],
-        max_grad_norm=train_cfg["algorithm"]["max_grad_norm"],
+        # learning_rate=linear_schedule(1e-2),
+        # learning_rate=ExponentialScheduler(init_lr=1e-2, lam=0.99),
         n_steps=train_cfg["runner"]["num_steps_per_env"],
-        batch_size=train_cfg["algorithm"]["num_mini_batches"],
+        ent_coef=train_cfg["algorithm"]["entropy_coef"],
+        clip_range=train_cfg["algorithm"]["clip_param"],
         n_epochs=train_cfg["algorithm"]["num_learning_epochs"],
+        gae_lambda=train_cfg["algorithm"]["lam"],
+        max_grad_norm=train_cfg["algorithm"]["max_grad_norm"],
+        vf_coef=train_cfg["algorithm"]["value_loss_coef"],
+        # target_kl=train_cfg["algorithm"]["desired_kl"],
+        batch_size=batch_size,
+        seed=train_cfg["seed"],
+        policy_kwargs=policy_kwargs,
+        clip_range_vf=train_cfg["algorithm"]["clip_param"],
+        normalize_advantage=False,
     )
+
     model.learn(
-        total_timesteps=1e5,
+        total_timesteps=total_timesteps,
         progress_bar=True,
+        tb_log_name=args.exp_name,
     )
     model.save(f"{log_dir}/model")
 

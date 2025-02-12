@@ -15,9 +15,9 @@ from stable_baselines3.common.vec_env import VecEnv
 
 def gs_rand_float(lower, upper, shape, device, std=0.5):
     # 指定された範囲でランダムな浮動小数点数を生成する関数
-    # return (upper - lower) * torch.rand(size=shape, device=device) + lower
-    rand_num = torch.randn(size=shape, device=device) * std
-    return torch.clamp(rand_num, lower, upper)
+    return (upper - lower) * torch.rand(size=shape, device=device) + lower
+    # rand_num = torch.randn(size=shape, device=device) * std
+    # return torch.clamp(rand_num, lower, upper)
 
 
 class HoverEnv:
@@ -524,6 +524,7 @@ class HoverVecEnv(VecEnv):
         obs_dim = 3 + 4 + 3 + 3 + self.num_actions
 
         observation_space = gym.spaces.Box(
+            # TODO: termination_if_x_greater_thanに従って変更
             low=np.concatenate(
                 [
                     -np.ones(3, dtype=np.float32),
@@ -590,15 +591,17 @@ class HoverVecEnv(VecEnv):
         obs = obs.cpu().numpy()
         rewards = rewards.cpu().numpy()
         dones = dones.cpu().numpy().astype(bool)
-        infos = self._get_infos(rewards)
-
+        infos = self._get_infos()
         return obs, rewards, dones, infos
 
-    def _get_infos(self, rewards):
+    def _get_infos(self):
+        total_rewards = torch.zeros(self.num_envs, device=self.device)
+        for name in self.hover_env.reward_scales.keys():
+            total_rewards += self.hover_env.episode_sums[name]
         infos = [
             {
                 "episode": {
-                    "r": rewards[i],
+                    "r": total_rewards[i].item(),
                     "l": self.hover_env.episode_length_buf[i].item(),
                 },
             }
@@ -614,7 +617,8 @@ class HoverVecEnv(VecEnv):
         return self.step_wait()
 
     def close(self):
-        self.hover_env.close()
+        if hasattr(self.hover_env.scene, "close"):
+            self.hover_env.scene.close()
 
     # --- 以下、VecEnv の抽象メソッドの実装 ---
     def get_attr(self, attr_name, indices=None):
