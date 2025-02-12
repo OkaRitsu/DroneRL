@@ -12,9 +12,13 @@ from genesis.utils.geom import (
 )
 
 
-def gs_rand_float(lower, upper, shape, device, std=0.1):
+def gs_rand_float(lower, upper, shape, device):
     # 指定された範囲でランダムな浮動小数点数を生成する関数
-    # return (upper - lower) * torch.rand(size=shape, device=device) + lower
+    return (upper - lower) * torch.rand(size=shape, device=device) + lower
+
+
+def gs_rand_float_gaussian(lower, upper, shape, device, std=0.5):
+    # 指定された平均と標準偏差でランダムな浮動小数点数を生成する関数
     rand_num = torch.randn(size=shape, device=device) * std
     return torch.clamp(rand_num, lower, upper)
 
