@@ -1,8 +1,6 @@
 import math
 
 import genesis as gs
-import gymnasium as gym
-import numpy as np
 import torch
 from genesis.utils.geom import (
     inv_quat,
@@ -178,22 +176,68 @@ class HoverEnv:
             observations=dict(),
         )  # ログ用の追加情報
 
+        # トラジェクトリーの初期化
+        self.trajectory = None
+        self.trajectory_steps = torch.zeros(
+            self.num_envs, dtype=torch.int64, device=self.device
+        )
+
+    def set_trajectory(self, trajectory):
+        if not torch.is_tensor(trajectory):
+            trajectory = torch.tensor(trajectory, device=self.device, dtype=gs.tc_float)
+        assert (
+            trajectory.ndim == 2 and trajectory.shape[1] == self.num_commands
+        ), f"trajectory の形状は (T, {self.num_commands}) である必要があります。"
+        self.trajectory = trajectory
+        # 全環境の trajectory の進捗をリセット
+        self.trajectory_steps = torch.zeros(
+            self.num_envs, dtype=torch.int64, device=self.device
+        )
+
     def _resample_commands(self, envs_idx):
-        # 指定された環境インデックスに対して新しいコマンド（目標位置）を再サンプリングする
-        self.commands[envs_idx, 0] = gs_rand_float(
-            *self.command_cfg["pos_x_range"], (len(envs_idx),), self.device
-        )
-        self.commands[envs_idx, 1] = gs_rand_float(
-            *self.command_cfg["pos_y_range"], (len(envs_idx),), self.device
-        )
-        self.commands[envs_idx, 2] = gs_rand_float(
-            *self.command_cfg["pos_z_range"], (len(envs_idx),), self.device
-        )
+        if self.trajectory is not None and self.trajectory.numel() > 0:
+            # envs_idx が Tensor でなければ変換
+            if not torch.is_tensor(envs_idx):
+                envs_idx = torch.tensor(envs_idx, device=self.device, dtype=torch.long)
+            # trajectory の長さ
+            traj_length = self.trajectory.shape[0]
+            current_ptr = self.trajectory_steps[envs_idx] % traj_length
+            self.commands[envs_idx] = self.trajectory[current_ptr]
+            # 各環境のポインタを1進める
+            self.trajectory_steps[envs_idx] += 1
+        else:
+            # trajectory が未登録の場合は従来通りランダムサンプリング
+            self.commands[envs_idx, 0] = gs_rand_float(
+                *self.command_cfg["pos_x_range"], (len(envs_idx),), self.device
+            )
+            self.commands[envs_idx, 1] = gs_rand_float(
+                *self.command_cfg["pos_y_range"], (len(envs_idx),), self.device
+            )
+            self.commands[envs_idx, 2] = gs_rand_float(
+                *self.command_cfg["pos_z_range"], (len(envs_idx),), self.device
+            )
         if self.target is not None:
             # ターゲットの位置を更新
             self.target.set_pos(
                 self.commands[envs_idx], zero_velocity=True, envs_idx=envs_idx
             )
+
+    # def _resample_commands(self, envs_idx):
+
+    #     self.commands[envs_idx, 0] = gs_rand_float(
+    #         *self.command_cfg["pos_x_range"], (len(envs_idx),), self.device
+    #     )
+    #     self.commands[envs_idx, 1] = gs_rand_float(
+    #         *self.command_cfg["pos_y_range"], (len(envs_idx),), self.device
+    #     )
+    #     self.commands[envs_idx, 2] = gs_rand_float(
+    #         *self.command_cfg["pos_z_range"], (len(envs_idx),), self.device
+    #     )
+    #     if self.target is not None:
+
+    #         self.target.set_pos(
+    #             self.commands[envs_idx], zero_velocity=True, envs_idx=envs_idx
+    #         )
 
     def _at_target(self):
         # ドローンが目標に到達したかを判定
@@ -359,6 +403,12 @@ class HoverEnv:
                 / self.env_cfg["episode_length_s"]
             )
             self.episode_sums[key][envs_idx] = 0.0
+
+        # トラジェクトリの進捗をリセット
+        if self.trajectory is not None:
+            if not torch.is_tensor(envs_idx):
+                envs_idx = torch.tensor(envs_idx, device=self.device, dtype=torch.long)
+            self.trajectory_steps[envs_idx] = 0
 
         # 新しいコマンドを設定
         self._resample_commands(envs_idx)
