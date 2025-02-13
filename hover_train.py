@@ -107,6 +107,7 @@ def get_cfgs():
         "pos_x_range": [-1.0, 1.0],
         "pos_y_range": [-1.0, 1.0],
         "pos_z_range": [1.0, 1.0],
+        "seed": 42,
     }
 
     return env_cfg, obs_cfg, reward_cfg, command_cfg

@@ -10,15 +10,21 @@ from genesis.utils.geom import (
 )
 
 
-def gs_rand_float(lower, upper, shape, device):
-    # 指定された範囲でランダムな浮動小数点数を生成する関数
-    return (upper - lower) * torch.rand(size=shape, device=device) + lower
+class CommandSampler:
+    def __init__(self, seed, device):
+        self.device = device
+        self.rng = torch.Generator(device=device)
+        self.rng.manual_seed(seed)
 
+    def sample(self, lower, upper, shape):
+        return (upper - lower) * torch.rand(
+            size=shape, device=self.device, generator=self.rng
+        ) + lower
 
-def gs_rand_float_gaussian(lower, upper, shape, device, std=0.5):
-    # 指定された平均と標準偏差でランダムな浮動小数点数を生成する関数
-    rand_num = torch.randn(size=shape, device=device) * std
-    return torch.clamp(rand_num, lower, upper)
+    def gussian_sample(self, lower, upper, shape, std=0.5):
+        # 指定された平均と標準偏差でランダムな浮動小数点数を生成する関数
+        rand_num = torch.randn(size=shape, device=self.device, generator=self.rng) * std
+        return torch.clamp(rand_num, lower, upper)
 
 
 class HoverEnv:
@@ -57,6 +63,10 @@ class HoverEnv:
 
         self.obs_scales = obs_cfg["obs_scales"]  # 観測のスケール
         self.reward_scales = reward_cfg["reward_scales"]  # 報酬のスケール
+
+        self.command_sampler = CommandSampler(
+            seed=command_cfg["seed"], device=self.device
+        )  # コマンドのサンプラー
 
         # シーンの作成
         self.scene = gs.Scene(
@@ -206,38 +216,20 @@ class HoverEnv:
             # 各環境のポインタを1進める
             self.trajectory_steps[envs_idx] += 1
         else:
-            # trajectory が未登録の場合は従来通りランダムサンプリング
-            self.commands[envs_idx, 0] = gs_rand_float(
-                *self.command_cfg["pos_x_range"], (len(envs_idx),), self.device
+            self.commands[envs_idx, 0] = self.command_sampler.sample(
+                *self.command_cfg["pos_x_range"], (len(envs_idx),)
             )
-            self.commands[envs_idx, 1] = gs_rand_float(
-                *self.command_cfg["pos_y_range"], (len(envs_idx),), self.device
+            self.commands[envs_idx, 1] = self.command_sampler.sample(
+                *self.command_cfg["pos_y_range"], (len(envs_idx),)
             )
-            self.commands[envs_idx, 2] = gs_rand_float(
-                *self.command_cfg["pos_z_range"], (len(envs_idx),), self.device
+            self.commands[envs_idx, 2] = self.command_sampler.sample(
+                *self.command_cfg["pos_z_range"], (len(envs_idx),)
             )
         if self.target is not None:
             # ターゲットの位置を更新
             self.target.set_pos(
                 self.commands[envs_idx], zero_velocity=True, envs_idx=envs_idx
             )
-
-    # def _resample_commands(self, envs_idx):
-
-    #     self.commands[envs_idx, 0] = gs_rand_float(
-    #         *self.command_cfg["pos_x_range"], (len(envs_idx),), self.device
-    #     )
-    #     self.commands[envs_idx, 1] = gs_rand_float(
-    #         *self.command_cfg["pos_y_range"], (len(envs_idx),), self.device
-    #     )
-    #     self.commands[envs_idx, 2] = gs_rand_float(
-    #         *self.command_cfg["pos_z_range"], (len(envs_idx),), self.device
-    #     )
-    #     if self.target is not None:
-
-    #         self.target.set_pos(
-    #             self.commands[envs_idx], zero_velocity=True, envs_idx=envs_idx
-    #         )
 
     def _at_target(self):
         # ドローンが目標に到達したかを判定
