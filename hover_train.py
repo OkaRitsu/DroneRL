@@ -7,7 +7,7 @@ import genesis as gs
 from rsl_rl.runners import OnPolicyRunner
 
 from hover_env import HoverEnv
-from utils import fix_seed, get_device
+from utils import CustomWandbWriter, fix_seed, get_device
 
 
 def get_train_cfg(exp_name, max_iterations):
@@ -40,7 +40,6 @@ def get_train_cfg(exp_name, max_iterations):
         "runner": {
             "algorithm_class_name": "PPO",
             "checkpoint": -1,
-            "experiment_name": exp_name,
             "load_run": -1,
             "log_interval": 1,
             "max_iterations": max_iterations,
@@ -52,12 +51,13 @@ def get_train_cfg(exp_name, max_iterations):
             "runner_class_name": "runner_class_name",
         },
         "runner_class_name": "OnPolicyRunner",
-        "seed": 1,
+        "seed": 42,
         "num_steps_per_env": 24,
         "save_interval": 1000,
         "empirical_normalization": False,
         "logger": "wandb",
-        "wandb_project": "DroneHoveringRL",
+        "project_name": "DroneHoveringRL",
+        "experiment_name": exp_name,
     }
 
     return train_cfg_dict
@@ -128,7 +128,7 @@ def main():
 
     gs.init(logging_level="warning")
 
-    log_dir = f"logs/{args.exp_name}"
+    log_dir = f"logs/{args.exp_name}/seed={args.seed}"
     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
     train_cfg = get_train_cfg(args.exp_name, args.max_iterations)
 
@@ -152,7 +152,11 @@ def main():
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
-    # TODO: runner.writer を新しく定義する
+
+    # カスタムロガーを使用
+    runner.writer = CustomWandbWriter(log_dir, cfg=train_cfg)
+    runner.logger_type = "wandb"
+
     runner.learn(
         num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
     )
