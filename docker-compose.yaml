@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  drone-env:
+    deploy:
+      resources:
+        reservations:
+          devices:
+             - driver: nvidia
+               count: 1
+               capabilities: [gpu]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    shm_size: '64gb'
+    tty: true
+    stdin_open: true
+    volumes:
+      - ./:/workspace
+      - /etc/localtime:/etc/localtime:ro
+    working_dir: /workspace
