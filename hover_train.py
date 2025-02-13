@@ -10,7 +10,7 @@ from hover_env import HoverEnv
 from utils import CustomWandbWriter, fix_seed, get_device
 
 
-def get_train_cfg(exp_name, max_iterations):
+def get_train_cfg(exp_name, max_iterations, seed):
     train_cfg_dict = {
         "algorithm": {
             "clip_param": 0.2,
@@ -51,11 +51,10 @@ def get_train_cfg(exp_name, max_iterations):
             "runner_class_name": "runner_class_name",
         },
         "runner_class_name": "OnPolicyRunner",
-        "seed": 42,
+        "seed": seed,
         "num_steps_per_env": 24,
         "save_interval": 1000,
         "empirical_normalization": False,
-        "logger": "wandb",
         "project_name": "DroneHoveringRL",
         "experiment_name": exp_name,
     }
@@ -122,6 +121,7 @@ def main():
     parser.add_argument("-B", "--num_envs", type=int, default=8192)
     parser.add_argument("--max_iterations", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--wandb", action="store_true", default=False)
     args = parser.parse_args()
 
     fix_seed(args.seed)
@@ -130,7 +130,7 @@ def main():
 
     log_dir = f"logs/{args.exp_name}/seed={args.seed}"
     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
-    train_cfg = get_train_cfg(args.exp_name, args.max_iterations)
+    train_cfg = get_train_cfg(args.exp_name, args.max_iterations, args.seed)
 
     if os.path.exists(log_dir):
         shutil.rmtree(log_dir)
@@ -152,11 +152,10 @@ def main():
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
-
-    # カスタムロガーを使用
-    runner.writer = CustomWandbWriter(log_dir, cfg=train_cfg)
-    runner.logger_type = "wandb"
-
+    if args.wandb:
+        # カスタムロガーを使用
+        runner.writer = CustomWandbWriter(log_dir, cfg=train_cfg)
+        runner.logger_type = "wandb"
     runner.learn(
         num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
     )
