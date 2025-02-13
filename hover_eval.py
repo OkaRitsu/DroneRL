@@ -3,8 +3,10 @@ import os
 import pickle
 
 import genesis as gs
+import hydra
 import numpy as np
 import torch
+from omegaconf import DictConfig, OmegaConf
 from rsl_rl.runners import OnPolicyRunner
 
 from hover_env import HoverEnv
@@ -67,43 +69,33 @@ def construct_trajectories():
     return trajectories
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
-    parser.add_argument("--ckpt", type=int, default=500)
-    parser.add_argument("--record", action="store_true", default=False)
-    args = parser.parse_args()
-
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def main(cfg: DictConfig):
     gs.init()
 
-    log_dir = f"logs/{args.exp_name}"
+    log_dir = f"logs/{cfg.train.experiment_name}/seed={cfg.train.seed}"
     ouput_dir = f"{log_dir}/eval"
     os.makedirs(ouput_dir, exist_ok=True)
-    env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(
-        open(f"{log_dir}/cfgs.pkl", "rb")
-    )
-    reward_cfg["reward_scales"] = {}
 
-    # visualize the target
-    env_cfg["visualize_target"] = True
-    # for video recording
-    env_cfg["visualize_camera"] = args.record
-    # set the max FPS for visualization
-    env_cfg["max_visualize_FPS"] = 60
+    cfg.reward.reward_scales = {}
+    cfg.env.visualize_target = True
+    cfg.env.visualize_camera = True
+    cfg.env.max_visualize_FPS = 60
+    cfg.env.num_envs = 1
 
     device = get_device()
     env = HoverEnv(
-        num_envs=1,
-        env_cfg=env_cfg,
-        obs_cfg=obs_cfg,
-        reward_cfg=reward_cfg,
-        command_cfg=command_cfg,
+        env_cfg=cfg.env,
+        obs_cfg=cfg.obs,
+        reward_cfg=cfg.reward,
+        command_cfg=cfg.command,
         show_viewer=False,
         device=device,
     )
 
+    train_cfg = OmegaConf.to_container(cfg.train, resolve=True)
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
-    resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
+    resume_path = os.path.join(log_dir, f"model_{cfg.train.max_iterations-1}.pt")
     runner.load(resume_path)
     policy = runner.get_inference_policy(device=device)
 
@@ -111,22 +103,17 @@ def main():
     for traj_name, traj in trajectories.items():
         env.set_trajectory(traj)
         obs, _ = env.reset()
-        max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
+        max_sim_step = int(cfg.env.episode_length_s * cfg.env.max_visualize_FPS)
         with torch.no_grad():
-            if args.record:
-                env.cam.start_recording()
-                for _ in range(max_sim_step):
-                    actions = policy(obs)
-                    obs, rews, dones, infos = env.step(actions)
-                    env.cam.render()
-                env.cam.stop_recording(
-                    save_to_filename=f"{ouput_dir}/{traj_name}.mp4",
-                    fps=env_cfg["max_visualize_FPS"],
-                )
-            else:
-                for _ in range(max_sim_step):
-                    actions = policy(obs)
-                    obs, rews, dones, infos = env.step(actions)
+            env.cam.start_recording()
+            for _ in range(max_sim_step):
+                actions = policy(obs)
+                obs, rews, dones, infos = env.step(actions)
+                env.cam.render()
+            env.cam.stop_recording(
+                save_to_filename=f"{ouput_dir}/{traj_name}.mp4",
+                fps=cfg.env.max_visualize_FPS,
+            )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
 import math
-from dataclasses import dataclass
 
 import genesis as gs
 import torch
@@ -28,15 +27,9 @@ class CommandSampler:
         return torch.clamp(rand_num, lower, upper)
 
 
-@dataclass
-class DummyConfig:
-    name: str
-
-
 class HoverEnv:
     def __init__(
         self,
-        num_envs,
         env_cfg,
         obs_cfg,
         reward_cfg,
@@ -47,7 +40,7 @@ class HoverEnv:
         self.device = torch.device(device)
 
         # 環境の初期設定
-        self.num_envs = num_envs  # 環境の数
+        self.num_envs = env_cfg["num_envs"]  # 環境の数
         self.num_obs = obs_cfg["num_obs"]  # 観測の次元数
         self.num_privileged_obs = None  # 特権的観測（使わない場合はNone）
         self.num_actions = env_cfg["num_actions"]  # 行動の次元数
@@ -62,7 +55,6 @@ class HoverEnv:
             env_cfg["episode_length_s"] / self.dt
         )  # エピソードの最大長
 
-        self.cfg = DummyConfig(name="hover_env")
         self.env_cfg = env_cfg
         self.obs_cfg = obs_cfg
         self.reward_cfg = reward_cfg
@@ -142,7 +134,7 @@ class HoverEnv:
         )  # ドローンモデル
 
         # シーンの構築
-        self.scene.build(n_envs=num_envs)
+        self.scene.build(n_envs=self.num_envs)
 
         # 報酬関数の初期化とスケールの適用
         self.reward_functions, self.episode_sums = dict(), dict()
