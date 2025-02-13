@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 import genesis as gs
 import torch
@@ -25,6 +26,11 @@ class CommandSampler:
         # 指定された平均と標準偏差でランダムな浮動小数点数を生成する関数
         rand_num = torch.randn(size=shape, device=self.device, generator=self.rng) * std
         return torch.clamp(rand_num, lower, upper)
+
+
+@dataclass
+class DummyConfig:
+    name: str
 
 
 class HoverEnv:
@@ -56,6 +62,7 @@ class HoverEnv:
             env_cfg["episode_length_s"] / self.dt
         )  # エピソードの最大長
 
+        self.cfg = DummyConfig(name="hover_env")
         self.env_cfg = env_cfg
         self.obs_cfg = obs_cfg
         self.reward_cfg = reward_cfg

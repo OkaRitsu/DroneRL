@@ -56,6 +56,8 @@ def get_train_cfg(exp_name, max_iterations):
         "num_steps_per_env": 24,
         "save_interval": 1000,
         "empirical_normalization": False,
+        "logger": "wandb",
+        "wandb_project": "DroneHoveringRL",
     }
 
     return train_cfg_dict
@@ -150,6 +152,7 @@ def main():
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
+    # TODO: runner.writer を新しく定義する
     runner.learn(
         num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
     )

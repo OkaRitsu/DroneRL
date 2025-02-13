@@ -8,9 +8,7 @@ conda create --name hover python=3.10 -y
 conda activate hover
 conda install pytorch torchvision torchaudio -c pytorch
 
-pip install genesis-world==0.2.1
-pip install rsl-rl-lib==2.2.0
-pip install gymnasium==1.0.0
+pip install -r requirements.txt
 ```
 ## Run Examples
 Check simulator
