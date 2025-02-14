@@ -273,6 +273,10 @@ class HoverEnv:
 
         # 目標に到達した環境のコマンドを再サンプリング
         envs_idx = self._at_target()
+        self.extras["at_target"] = torch.zeros(
+            self.num_envs, device=self.device, dtype=gs.tc_float
+        )
+        self.extras["at_target"][envs_idx] = 1.0
         self._resample_commands(envs_idx)
 
         # 終了条件をチェック
