@@ -14,7 +14,7 @@ from hover_env import HoverEnv
 from utils import get_device
 
 
-def construct_trajectories():
+def construct_waypoints_sets():
     # A. コーナー・ルート (corner_route_1)
     corner_route_1 = [
         (-0.8, -0.8, 1.0),
@@ -60,39 +60,39 @@ def construct_trajectories():
         y = center[1] + radius * np.sin(angle_rad)
         circle_6_points.append((x, y, 1.0))
 
-    trajectories = {
+    waypoints_sets = {
         "corner_route_1": corner_route_1,
         "diagonal_route_1": diagonal_route_1,
         "grid_route_3x3": grid_route_3x3,
         "random_10_points": random_10_points,
         "circle_6_points": circle_6_points,
     }
-    return trajectories
+    return waypoints_sets
 
 
-def plot_history(traj_name, trajectory, history, output_dir):
+def plot_history(wps_name, waypoints, history, output_dir):
     # 軌道とエージェントの軌跡を保存
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.plot(
-        [pt[0] for pt in trajectory], [pt[1] for pt in trajectory], "o-", label="target"
+        [pt[0] for pt in waypoints], [pt[1] for pt in waypoints], "o-", label="target"
     )
     ax.plot(
         [pt[0] for pt in history["position"]],
         [pt[1] for pt in history["position"]],
         "-",
-        label="trajectory",
+        label="waypoints",
     )
     ax.set_aspect("equal")
     ax.legend()
-    ax.set_title(f"Trajectory: {traj_name}")
+    ax.set_title(f"waypoints: {wps_name}")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
-    fig.savefig(f"{output_dir}/trajectory.png")
+    fig.savefig(f"{output_dir}/waypoints.png")
 
     # 高度の履歴を保存
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.plot([pt[2] for pt in history["position"]])
-    ax.set_title(f"Altitude history: {traj_name}")
+    ax.set_title(f"Altitude history: {wps_name}")
     ax.set_xlabel("step")
     ax.set_ylabel("altitude")
     fig.savefig(f"{output_dir}/altitude_history.png")
@@ -105,7 +105,7 @@ def plot_history(traj_name, trajectory, history, output_dir):
     ax.plot(action_history[:, 2], label="pitch")
     ax.plot(action_history[:, 3], label="yaw")
     ax.legend()
-    ax.set_title(f"Action history: {traj_name}")
+    ax.set_title(f"Action history: {wps_name}")
     ax.set_xlabel("step")
     ax.set_ylabel("value")
     fig.savefig(f"{output_dir}/action_history.png")
@@ -114,7 +114,7 @@ def plot_history(traj_name, trajectory, history, output_dir):
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     total_reward_history = np.cumsum(history["reward"])
     ax.plot(total_reward_history, label="total_reward")
-    ax.set_title(f"Reward history: {traj_name}")
+    ax.set_title(f"Reward history: {wps_name}")
     ax.set_xlabel("step")
     ax.set_ylabel("reward")
     fig.savefig(f"{output_dir}/reward_history.png")
@@ -149,11 +149,11 @@ def main(cfg: DictConfig):
     runner.load(resume_path)
     policy = runner.get_inference_policy(device=device)
 
-    trajectories = construct_trajectories()
-    for traj_name, traj in trajectories.items():
-        traj_dir = f"{ouput_dir}/{traj_name}"
-        os.makedirs(traj_dir, exist_ok=True)
-        env.set_trajectory(traj)
+    waypoints_sets = construct_waypoints_sets()
+    for wps_name, wps in waypoints_sets.items():
+        wps_dir = f"{ouput_dir}/{wps_name}"
+        os.makedirs(wps_dir, exist_ok=True)
+        env.set_waypoints(wps)
         obs, _ = env.reset()
         max_sim_step = int(cfg.env.episode_length_s * cfg.env.max_visualize_FPS)
         target_cnt = 0
@@ -171,13 +171,13 @@ def main(cfg: DictConfig):
                 if infos["at_target"][0].cpu().item():
                     target_cnt += 1
                     # すべての点を通過したら終了
-                    if target_cnt == len(traj):
+                    if target_cnt == len(wps):
                         success = True
-                        print(f"Trajectory {traj_name} is completed in {step} steps.")
+                        print(f"waypoints {wps_name} is completed in {step} steps.")
                         break
                 env.cam.render()
             env.cam.stop_recording(
-                save_to_filename=f"{traj_dir}/video.mp4",
+                save_to_filename=f"{wps_dir}/video.mp4",
                 fps=cfg.env.max_visualize_FPS,
             )
         # 結果を保存
@@ -193,11 +193,11 @@ def main(cfg: DictConfig):
                 "max": np.max(altitudes),
             },
         }
-        with open(f"{traj_dir}/result.json", "w") as f:
+        with open(f"{wps_dir}/result.json", "w") as f:
             json.dump(result, f, indent=4)
 
         # 履歴を保存
-        plot_history(traj_name, traj, history, traj_dir)
+        plot_history(wps_name, wps, history, wps_dir)
 
 
 if __name__ == "__main__":

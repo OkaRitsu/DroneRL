@@ -186,34 +186,34 @@ class HoverEnv:
         )  # ログ用の追加情報
 
         # トラジェクトリーの初期化
-        self.trajectory = None
-        self.trajectory_steps = torch.zeros(
+        self.waypoints = None
+        self.waypoint_indexes = torch.zeros(
             self.num_envs, dtype=torch.int64, device=self.device
         )
 
-    def set_trajectory(self, trajectory):
-        if not torch.is_tensor(trajectory):
-            trajectory = torch.tensor(trajectory, device=self.device, dtype=gs.tc_float)
+    def set_waypoints(self, waypoints):
+        if not torch.is_tensor(waypoints):
+            waypoints = torch.tensor(waypoints, device=self.device, dtype=gs.tc_float)
         assert (
-            trajectory.ndim == 2 and trajectory.shape[1] == self.num_commands
-        ), f"trajectory の形状は (T, {self.num_commands}) である必要があります。"
-        self.trajectory = trajectory
-        # 全環境の trajectory の進捗をリセット
-        self.trajectory_steps = torch.zeros(
+            waypoints.ndim == 2 and waypoints.shape[1] == self.num_commands
+        ), f"waypoint の形状は (T, {self.num_commands}) である必要があります。"
+        self.waypoints = waypoints
+        # 全環境の waypoints の進捗をリセット
+        self.waypoint_indexes = torch.zeros(
             self.num_envs, dtype=torch.int64, device=self.device
         )
 
     def _resample_commands(self, envs_idx):
-        if self.trajectory is not None and self.trajectory.numel() > 0:
+        if self.waypoints is not None and self.waypoints.numel() > 0:
             # envs_idx が Tensor でなければ変換
             if not torch.is_tensor(envs_idx):
                 envs_idx = torch.tensor(envs_idx, device=self.device, dtype=torch.long)
-            # trajectory の長さ
-            traj_length = self.trajectory.shape[0]
-            current_ptr = self.trajectory_steps[envs_idx] % traj_length
-            self.commands[envs_idx] = self.trajectory[current_ptr]
+            # waypoint の長さ
+            traj_length = self.waypoints.shape[0]
+            current_ptr = self.waypoint_indexes[envs_idx] % traj_length
+            self.commands[envs_idx] = self.waypoints[current_ptr]
             # 各環境のポインタを1進める
-            self.trajectory_steps[envs_idx] += 1
+            self.waypoint_indexes[envs_idx] += 1
         else:
             self.commands[envs_idx, 0] = self.command_sampler.sample(
                 *self.command_cfg["pos_x_range"], (len(envs_idx),)
@@ -399,11 +399,11 @@ class HoverEnv:
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        # トラジェクトリの進捗をリセット
-        if self.trajectory is not None:
+        # ウェイポイントの進捗をリセット
+        if self.waypoints is not None:
             if not torch.is_tensor(envs_idx):
                 envs_idx = torch.tensor(envs_idx, device=self.device, dtype=torch.long)
-            self.trajectory_steps[envs_idx] = 0
+            self.waypoint_indexes[envs_idx] = 0
 
         # 新しいコマンドを設定
         self._resample_commands(envs_idx)
