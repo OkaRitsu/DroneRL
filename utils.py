@@ -81,3 +81,6 @@ class CustomWandbWriter(SummaryWriter):
 
     def save_file(self, path, iter=None):
         wandb.save(path, base_path=os.path.dirname(path))
+    
+    def summary(self, tag, scalar_value):
+        wandb.summary[tag] = scalar_value

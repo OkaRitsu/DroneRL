@@ -33,10 +33,13 @@ def main(cfg: DictConfig):
 
     train_cfg = OmegaConf.to_container(cfg.train, resolve=True)
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device)
+    num_params = sum(p.numel() for p in runner.alg.actor_critic.parameters())
+    print(f"Number of parameters: {num_params}")
     if not cfg.debug:
         # カスタムロガーを使用
         runner.writer = CustomWandbWriter(log_dir, cfg=train_cfg)
         runner.logger_type = "wandb"
+        runner.writer.summary("num_params", num_params)
     runner.learn(
         num_learning_iterations=cfg.train.max_iterations, init_at_random_ep_len=True
     )
