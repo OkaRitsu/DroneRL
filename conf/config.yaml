@@ -12,10 +12,15 @@ train:
   runner_class_name: "OnPolicyRunner"
   policy:
     class_name: "ActorCritic"
+    # class_name: "ActorCriticRecurrent"
     activation: "tanh"
     actor_hidden_dims: [128, 128]
     critic_hidden_dims: [128, 128]
     init_noise_std: 1.0
+    # only needed for "ActorCriticRecurrent"
+    rnn_type: "lstm"
+    rnn_hidden_size: 512
+    rnn_num_layers: 1
   algorithm:
     class_name: "PPO"
     clip_param: 0.2
