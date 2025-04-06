@@ -131,6 +131,7 @@ class HoverEnv:
         )  # 初期クォータニオンの逆
         self.drone = self.scene.add_entity(
             gs.morphs.Drone(file="urdf/drones/cf2x.urdf")
+            # gs.morphs.Drone(file="urdf/drones/racer.urdf")
         )  # ドローンモデル
 
         # シーンの構築
