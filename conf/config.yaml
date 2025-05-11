@@ -3,7 +3,7 @@ visualize: false
 
 train:
   experiment_name: "drone_hovering"
-  project_name: "DroneHoveringRL"
+  project_name: "DroneHoveringRL_v2"
   max_iterations: 500
   seed: 42
   num_steps_per_env: 24
@@ -50,6 +50,7 @@ env:
   base_init_pos: [0.0, 0.0, 1.0]
   base_init_quat: [1.0, 0.0, 0.0, 0.0]
   episode_length_s: 15.0
+  hover_duration_s: 0.2
   at_target_threshold: 0.1
   resampling_time_s: 3.0
   simulate_action_latency: true
@@ -73,6 +74,7 @@ reward:
     yaw: 0.01
     angular: -2e-4
     crash: -10.0
+    hover: 0.1
 
 command:
   num_commands: 3

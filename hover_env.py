@@ -60,6 +60,17 @@ class HoverEnv:
         self.reward_cfg = reward_cfg
         self.command_cfg = command_cfg
 
+        # --- Hover success parameters ---
+        self.hover_duration_s = env_cfg[
+            "hover_duration_s"
+        ]  # seconds required to hover at the target
+        self.hover_steps = math.ceil(
+            self.hover_duration_s / self.dt
+        )  # equivalent number of sim steps
+        self.at_target_counter = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.int32
+        )  # per‑env counter for consecutive in‑target steps
+
         self.obs_scales = obs_cfg["obs_scales"]  # 観測のスケール
         self.reward_scales = reward_cfg["reward_scales"]  # 報酬のスケール
 
@@ -272,13 +283,31 @@ class HoverEnv:
         self.base_lin_vel[:] = transform_by_quat(self.drone.get_vel(), inv_base_quat)
         self.base_ang_vel[:] = transform_by_quat(self.drone.get_ang(), inv_base_quat)
 
-        # 目標に到達した環境のコマンドを再サンプリング
-        envs_idx = self._at_target()
+        # ---------------- 成功判定: 目標到達後に 1 秒ホバリングできたか ----------------
+        within_target = (
+            torch.norm(self.rel_pos, dim=1) < self.env_cfg["at_target_threshold"]
+        )
+
+        # カウンタ更新: 目標範囲内なら +1、外れたらリセット
+        self.at_target_counter[within_target] += 1
+        self.at_target_counter[~within_target] = 0
+
+        # 1 秒 (= hover_steps) 連続で範囲内に留まった環境を成功とする
+        success_envs = (
+            (self.at_target_counter >= self.hover_steps)
+            .nonzero(as_tuple=False)
+            .flatten()
+        )
+
+        # extras フラグの準備
         self.extras["at_target"] = torch.zeros(
             self.num_envs, device=self.device, dtype=gs.tc_float
         )
-        self.extras["at_target"][envs_idx] = 1.0
-        self._resample_commands(envs_idx)
+        if len(success_envs) > 0:
+            self.extras["at_target"][success_envs] = 1.0
+            # 成功した環境は新しいコマンドを設定し、カウンタをリセット
+            self.at_target_counter[success_envs] = 0
+            self._resample_commands(success_envs)
 
         # 終了条件をチェック
         self.crash_condition = (
@@ -370,6 +399,9 @@ class HoverEnv:
         if len(envs_idx) == 0:
             return
 
+        # ホバー判定用カウンタをリセット
+        self.at_target_counter[envs_idx] = 0
+
         # ドローンの状態を初期化
         self.base_pos[envs_idx] = self.base_init_pos
         self.last_base_pos[envs_idx] = self.base_init_pos
@@ -445,3 +477,9 @@ class HoverEnv:
         crash_rew = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
         crash_rew[self.crash_condition] = 1
         return crash_rew
+
+    def _reward_hover(self):
+        # 目標近接を維持したときの報酬: しきい値より近いフレームで +1
+        within = torch.norm(self.rel_pos, dim=1) < self.env_cfg["at_target_threshold"]
+        hover_rew = within.to(dtype=gs.tc_float)
+        return hover_rew
