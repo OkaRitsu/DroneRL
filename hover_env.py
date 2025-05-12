@@ -483,3 +483,14 @@ class HoverEnv:
         within = torch.norm(self.rel_pos, dim=1) < self.env_cfg["at_target_threshold"]
         hover_rew = within.to(dtype=gs.tc_float)
         return hover_rew
+
+    def _reward_altitude(self):
+        """
+        Altitude stability shaping:
+        Positive when the squared error in Z between current and target decreases.
+        Δ(z^2) = last_rel_z^2 - rel_z^2
+        """
+        altitude_rew = torch.square(self.last_rel_pos[:, 2]) - torch.square(
+            self.rel_pos[:, 2]
+        )
+        return altitude_rew
