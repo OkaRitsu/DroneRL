@@ -59,6 +59,7 @@ class HoverEnv:
         self.obs_cfg = obs_cfg
         self.reward_cfg = reward_cfg
         self.command_cfg = command_cfg
+        self.force_hovering = False
 
         # --- Hover success parameters ---
         self.hover_duration_s = env_cfg[
@@ -193,6 +194,10 @@ class HoverEnv:
             (self.num_envs, 3), device=self.device, dtype=gs.tc_float
         )  # 角速度
         self.last_base_pos = torch.zeros_like(self.base_pos)  # 前回の位置
+        self.hovering_pos = torch.zeros(
+            (self.num_envs, 3), device=self.device, dtype=gs.tc_float
+        )
+        self.hovering_pos[:] = self.base_init_pos
 
         self.extras = dict(
             observations=dict(),
@@ -217,17 +222,25 @@ class HoverEnv:
         )
 
     def _resample_commands(self, envs_idx):
+        # envs_idx が Tensor でなければ変換
+        if not torch.is_tensor(envs_idx):
+            envs_idx = torch.tensor(envs_idx, device=self.device, dtype=torch.long)
         if self.waypoints is not None and self.waypoints.numel() > 0:
-            # envs_idx が Tensor でなければ変換
-            if not torch.is_tensor(envs_idx):
-                envs_idx = torch.tensor(envs_idx, device=self.device, dtype=torch.long)
             # waypoint の長さ
             traj_length = self.waypoints.shape[0]
             current_ptr = self.waypoint_indexes[envs_idx] % traj_length
             self.commands[envs_idx] = self.waypoints[current_ptr]
             # 各環境のポインタを1進める
             self.waypoint_indexes[envs_idx] += 1
+            # waypoint すべて終わったらホバリングに切り替え
+            if self.waypoint_indexes[0] >= traj_length:
+                self.hovering_pos[envs_idx] = self.waypoints[current_ptr]
+                self.waypoints = None
+        elif self.force_hovering:
+            # hovering
+            self.commands[envs_idx] = self.hovering_pos
         else:
+            # ターゲットをサンプリング
             self.commands[envs_idx, 0] = self.command_sampler.sample(
                 *self.command_cfg["pos_x_range"], (len(envs_idx),)
             )
@@ -237,6 +250,7 @@ class HoverEnv:
             self.commands[envs_idx, 2] = self.command_sampler.sample(
                 *self.command_cfg["pos_z_range"], (len(envs_idx),)
             )
+
         if self.target is not None:
             # ターゲットの位置を更新
             self.target.set_pos(

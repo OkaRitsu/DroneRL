@@ -11,7 +11,7 @@ from omegaconf import DictConfig, OmegaConf
 from rsl_rl.runners import OnPolicyRunner
 
 from hover_env import HoverEnv
-from utils import get_device
+from utils import get_device, point_to_segment_distance
 
 
 def construct_waypoints_sets():
@@ -69,51 +69,6 @@ def construct_waypoints_sets():
     }
     return waypoints_sets
 
-
-def point_to_segment_distance(A, B, P):
-    """
-    点A, Bを端点とする線分ABと点Pとの最短距離を計算する関数
-
-    Parameters:
-        A, B, P: 3次元空間内の点を表すリストまたはNumPy配列
-                 例: [x, y, z]
-
-    Returns:
-        点Pから線分ABまでの最短距離 (float)
-    """
-    # NumPy配列に変換（計算のための型変換）
-    A = np.array(A, dtype=float)
-    B = np.array(B, dtype=float)
-    P = np.array(P, dtype=float)
-    
-    # ベクトルABとAPを計算
-    AB = B - A
-    AP = P - A
-    
-    # ABの2乗ノルム（大きさの2乗）
-    AB_norm_sq = np.dot(AB, AB)
-    
-    # もしAとBが同じ点なら、距離はAPのノルム
-    if AB_norm_sq == 0:
-        return np.linalg.norm(AP)
-    
-    # 射影の係数tを計算
-    t = np.dot(AP, AB) / AB_norm_sq
-    
-    # tの値に応じた最短距離の計算
-    if t < 0:
-        # Pの射影がAより外にある場合、距離はAPのノルム
-        closest_point = A
-    elif t > 1:
-        # Pの射影がBより外にある場合、距離はBPのノルム
-        closest_point = B
-    else:
-        # 0<=t<=1なら、射影点Q = A + t*ABが線分上に存在する
-        closest_point = A + t * AB
-    
-    # Pと最も近い点との距離を返す
-    distance = np.linalg.norm(P - closest_point)
-    return distance
 
 def plot_history(wps_name, waypoints, history, output_dir):
     # 軌道とエージェントの軌跡を保存
