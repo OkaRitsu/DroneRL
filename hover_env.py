@@ -72,6 +72,7 @@ class HoverEnv:
         )  # per‑env counter for consecutive in‑target steps
 
         self.obs_scales = obs_cfg["obs_scales"]  # 観測のスケール
+        self.noise_std = obs_cfg["sensor_noise_std"]  # センサノイズの標準偏差
         self.reward_scales = reward_cfg["reward_scales"]  # 報酬のスケール
 
         self.command_sampler = CommandSampler(
@@ -360,19 +361,25 @@ class HoverEnv:
             self.rew_buf += rew
             self.episode_sums[name] += rew
 
+        # ---------------- センサノイズを付与 ----------------
+        rel_pos_obs = (
+            self.rel_pos + torch.randn_like(self.rel_pos) * self.noise_std["rel_pos"]
+        )
+        lin_vel_obs = (
+            self.base_lin_vel
+            + torch.randn_like(self.base_lin_vel) * self.noise_std["lin_vel"]
+        )
+        ang_vel_obs = (
+            self.base_ang_vel
+            + torch.randn_like(self.base_ang_vel) * self.noise_std["ang_vel"]
+        )
         # 観測値を計算
         self.obs_buf = torch.cat(
             [
-                torch.clip(
-                    self.rel_pos * self.obs_scales["rel_pos"], -1, 1
-                ),  # 相対位置
+                torch.clip(rel_pos_obs * self.obs_scales["rel_pos"], -1, 1),  # 相対位置
                 self.base_quat,  # クォータニオン
-                torch.clip(
-                    self.base_lin_vel * self.obs_scales["lin_vel"], -1, 1
-                ),  # 線形速度
-                torch.clip(
-                    self.base_ang_vel * self.obs_scales["ang_vel"], -1, 1
-                ),  # 角速度
+                torch.clip(lin_vel_obs * self.obs_scales["lin_vel"], -1, 1),  # 線形速度
+                torch.clip(ang_vel_obs * self.obs_scales["ang_vel"], -1, 1),  # 角速度
                 self.last_actions,  # 前回の行動
             ],
             axis=-1,
